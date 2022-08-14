@@ -36,21 +36,17 @@ func (st *Train) UnmarshalJSON(data []byte) error {
 	var res parseType
 	if err := json.Unmarshal(data, &res); err != nil {
 		return err
-		fmt.Print(err)
 	}
-
 	parsedArrivalTime, err := time.Parse("15:04:05", res.ArrivalTime)
 	if err != nil {
-		fmt.Print(err)
+		return fmt.Errorf("wrong arrival time: %w", err)
 	}
-
 	parsedDepartureTime, err := time.Parse("15:04:05", res.DepartureTime)
 	if err != nil {
-		fmt.Print(err)
+		return fmt.Errorf("wrong departure time: %w", err)
 	}
 
 	// Записуємо в вихідну структуру наш час
-
 	st.TrainID = res.TrainID
 	st.DepartureStationID = res.DepartureStationID
 	st.ArrivalStationID = res.ArrivalStationID
@@ -63,66 +59,50 @@ func (st *Train) UnmarshalJSON(data []byte) error {
 
 func main() {
 
-	var departureStation, arrivalStation, criteria string
-
-	//	... запит даних від користувача
-
-	fmt.Println("Введіть номер станції відправлення :")
-	fmt.Scan(&departureStation)
-	fmt.Println("Введіть номер станції прибуття :")
-	fmt.Scan(&arrivalStation)
-	fmt.Println("Введіть ритерій, по котрому треба відсортувати потяги (price, arrival-time, departure-time):")
-	fmt.Scan(&criteria)
+	//var departureStation, arrivalStation, criteria string
+	//fmt.Println("Введіть номер станції відправлення :")
+	//fmt.Scan(&departureStation)
+	//fmt.Println("Введіть номер станції прибуття :")
+	//fmt.Scan(&arrivalStation)
+	//fmt.Println("Введіть ритерій, по котрому треба відсортувати потяги (price, arrival-time, departure-time):")
+	//fmt.Scan(&criteria)
 
 	//test cases
+	result, err := FindTrains("1902", "1929", "price")
 
-	//result1, err := FindTrains("1902", "1929", "price")
-	//fmt.Println(result1)
-
-	result, err := FindTrains(departureStation, arrivalStation, criteria)
-	//	... обробка помилки
+	//result, err := FindTrains(departureStation, arrivalStation, criteria)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-
-	if result != nil {
+	if len(result) != 0 {
 		fmt.Printf("%#v\n", result)
-		fmt.Println()
 	}
-
 }
 
 func ReadTrainsJson(pathJson string) Trains {
 	var trains Trains
 	byteValue, err := ioutil.ReadFile(pathJson)
 	if err != nil {
-		fmt.Print(err)
+		fmt.Errorf("%w", err)
+		return nil
 	}
-
-	err = json.Unmarshal([]byte(byteValue), &trains)
-	if err != nil {
-		fmt.Print(err)
+	if err := json.Unmarshal(byteValue, &trains); err != nil {
+		fmt.Errorf("%w", err)
+		return nil
 	}
-
 	return trains
 }
 
 func FindTrains(departureStation, arrivalStation, criteria string) (Trains, error) {
 
 	var trains Trains
-	var bestTrains Trains
-
 	const pathJson = "data.json"
-
-	//Читаємо файл json та парсимо значення у структуру.
 	trains = ReadTrainsJson(pathJson)
 
-	// ... код
 	if len(trains) <= 0 {
 		return nil, errors.New("not enough trains")
 	}
-
 	if len(departureStation) <= 0 {
 		return nil, errors.New("empty departure station")
 	}
@@ -134,41 +114,33 @@ func FindTrains(departureStation, arrivalStation, criteria string) (Trains, erro
 	if err != nil {
 		return nil, errors.New("bad departure station input")
 	}
-
 	arrStName, err := strconv.Atoi(arrivalStation)
 	if err != nil {
 		return nil, errors.New("bad arrival station input")
 	}
 
+	var bestTrains Trains
 	for _, tempTrain := range trains {
 		if depStName == tempTrain.DepartureStationID && arrStName == tempTrain.ArrivalStationID {
-
 			bestTrains = append(bestTrains, tempTrain)
-
 		}
-
 	}
 
-	if bestTrains == nil {
-		return nil, nil
+	if len(bestTrains) < 3 {
+		return nil, errors.New("not enought best trains")
 	}
 
 	switch criteria {
-
 	case "price":
 		sort.SliceStable(bestTrains, func(i, j int) bool { return bestTrains[i].Price < bestTrains[j].Price })
-
 	case "arrival-time":
 		sort.SliceStable(bestTrains, func(i, j int) bool { return bestTrains[i].ArrivalTime.Before(bestTrains[j].ArrivalTime) })
-
 	case "departure-time":
 		sort.SliceStable(bestTrains, func(i, j int) bool { return bestTrains[i].DepartureTime.Before(bestTrains[j].DepartureTime) })
-
 	default:
 		return nil, errors.New("unsupported criteria")
 	}
 
-	bestTrains = bestTrains[0:3]
-
-	return bestTrains, nil // маєте повернути правильні значення
+	const bestTrainsNum = 3
+	return bestTrains[0:bestTrainsNum], nil // маєте повернути правильні значення
 }
