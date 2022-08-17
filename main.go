@@ -5,13 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"sort"
 	"strconv"
 	"time"
 )
 
+const timeLayout = "15:04:05"
+
+// Trains ...
 type Trains []Train
 
+// Train ...
 type Train struct {
 	TrainID            int
 	DepartureStationID int
@@ -21,11 +26,9 @@ type Train struct {
 	DepartureTime      time.Time
 }
 
-// Переписуємо метод UnmarshalJSON для структури Trains для того щоб спарсити час
-
+// UnmarshalJSON unmarshal a JSON description of Trains type. - коментарі мають починатися з назви функції чи метода.
 func (st *Train) UnmarshalJSON(data []byte) error {
-	// Створюємо додаткову структуру для перезапису ArrivalTime та DepartureTime у вигляді рядка
-	type parseType struct {
+	var res struct { // якщо ми використовуємо цю структуру лише один раз - можна ось так зробити - створити змінну неіменованого типу
 		TrainID            int
 		DepartureStationID int
 		ArrivalStationID   int
@@ -33,20 +36,20 @@ func (st *Train) UnmarshalJSON(data []byte) error {
 		ArrivalTime        string
 		DepartureTime      string
 	}
-	var res parseType
 	if err := json.Unmarshal(data, &res); err != nil {
 		return err
 	}
-	parsedArrivalTime, err := time.Parse("15:04:05", res.ArrivalTime)
+
+	parsedArrivalTime, err := time.Parse(timeLayout, res.ArrivalTime) // ми формат часу використовуємо декілька разів, тож краще винести в timeLayout константу
 	if err != nil {
 		return fmt.Errorf("wrong arrival time: %w", err)
 	}
-	parsedDepartureTime, err := time.Parse("15:04:05", res.DepartureTime)
+
+	parsedDepartureTime, err := time.Parse(timeLayout, res.DepartureTime)
 	if err != nil {
 		return fmt.Errorf("wrong departure time: %w", err)
 	}
 
-	// Записуємо в вихідну структуру наш час
 	st.TrainID = res.TrainID
 	st.DepartureStationID = res.DepartureStationID
 	st.ArrivalStationID = res.ArrivalStationID
@@ -58,54 +61,47 @@ func (st *Train) UnmarshalJSON(data []byte) error {
 }
 
 func main() {
-
-	//var departureStation, arrivalStation, criteria string
-	//fmt.Println("Введіть номер станції відправлення :")
-	//fmt.Scan(&departureStation)
-	//fmt.Println("Введіть номер станції прибуття :")
-	//fmt.Scan(&arrivalStation)
-	//fmt.Println("Введіть ритерій, по котрому треба відсортувати потяги (price, arrival-time, departure-time):")
-	//fmt.Scan(&criteria)
-
-	//test cases
 	result, err := FindTrains("1902", "1929", "price")
-
-	//result, err := FindTrains(departureStation, arrivalStation, criteria)
 	if err != nil {
-		fmt.Println(err)
-		return
+		log.Fatal(err) // після Fatal програма робить os.Exit, що моментально припиняє виконання програми
+		// ретурн в такому разі не потрібен
 	}
+
 	if len(result) != 0 {
 		fmt.Printf("%#v\n", result)
 	}
 }
 
-func ReadTrainsJson(pathJson string) Trains {
-	var trains Trains
+// ReadTrainsJson ...
+func ReadTrainsJson(pathJson string) (Trains, error) {
 	byteValue, err := ioutil.ReadFile(pathJson)
 	if err != nil {
-		fmt.Errorf("%w", err)
-		return nil
+		return nil, err
 	}
-	if err := json.Unmarshal(byteValue, &trains); err != nil {
-		fmt.Errorf("%w", err)
-		return nil
-	}
-	return trains
-}
-
-func FindTrains(departureStation, arrivalStation, criteria string) (Trains, error) {
 
 	var trains Trains
-	const pathJson = "data.json"
-	trains = ReadTrainsJson(pathJson)
+	if err := json.Unmarshal(byteValue, &trains); err != nil {
+		return nil, err
+	}
+
+	return trains, nil
+}
+
+// FindTrains ...
+func FindTrains(departureStation, arrivalStation, criteria string) (Trains, error) {
+	trains, err := ReadTrainsJson("data.json")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read trains data: %w", err)
+	}
 
 	if len(trains) <= 0 {
 		return nil, errors.New("not enough trains")
 	}
+
 	if len(departureStation) <= 0 {
 		return nil, errors.New("empty departure station")
 	}
+
 	if len(arrivalStation) <= 0 {
 		return nil, errors.New("empty arrival station")
 	}
@@ -114,33 +110,35 @@ func FindTrains(departureStation, arrivalStation, criteria string) (Trains, erro
 	if err != nil {
 		return nil, errors.New("bad departure station input")
 	}
+
 	arrStName, err := strconv.Atoi(arrivalStation)
 	if err != nil {
 		return nil, errors.New("bad arrival station input")
 	}
 
-	var bestTrains Trains
+	var result Trains
 	for _, tempTrain := range trains {
 		if depStName == tempTrain.DepartureStationID && arrStName == tempTrain.ArrivalStationID {
-			bestTrains = append(bestTrains, tempTrain)
+			result = append(result, tempTrain)
 		}
 	}
 
-	if len(bestTrains) < 3 {
+	const bestTrainsNum = 3
+
+	if len(result) < bestTrainsNum {
 		return nil, errors.New("not enought best trains")
 	}
 
 	switch criteria {
 	case "price":
-		sort.SliceStable(bestTrains, func(i, j int) bool { return bestTrains[i].Price < bestTrains[j].Price })
+		sort.SliceStable(result, func(i, j int) bool { return result[i].Price < result[j].Price })
 	case "arrival-time":
-		sort.SliceStable(bestTrains, func(i, j int) bool { return bestTrains[i].ArrivalTime.Before(bestTrains[j].ArrivalTime) })
+		sort.SliceStable(result, func(i, j int) bool { return result[i].ArrivalTime.Before(result[j].ArrivalTime) })
 	case "departure-time":
-		sort.SliceStable(bestTrains, func(i, j int) bool { return bestTrains[i].DepartureTime.Before(bestTrains[j].DepartureTime) })
+		sort.SliceStable(result, func(i, j int) bool { return result[i].DepartureTime.Before(result[j].DepartureTime) })
 	default:
 		return nil, errors.New("unsupported criteria")
 	}
 
-	const bestTrainsNum = 3
-	return bestTrains[0:bestTrainsNum], nil // маєте повернути правильні значення
+	return result[0:bestTrainsNum], nil
 }
